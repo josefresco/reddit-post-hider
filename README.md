@@ -5,9 +5,11 @@ A browser extension that allows you to hide Reddit posts by clicking on them, wi
 ## Features
 
 - **Click to Hide**: Simply click on any Reddit post to hide it
-- **Persistent Storage**: Hidden posts remain hidden across browser sessions
-- **Keyboard Shortcuts**: Use keyboard shortcuts for quick hiding
-- **Enhanced UX**: Smooth animations and visual feedback
+- **Subreddit Blocking**: Block entire subreddits from appearing in your feed
+- **Persistent Storage**: Hidden posts and blocked subreddits remain saved across browser sessions
+- **Keyboard Shortcuts**: Use Ctrl+H to hide/unhide the hovered post, Ctrl+Shift+H for help
+- **Enhanced UX**: Smooth animations, visual feedback, and hover effects
+- **Smart Detection**: Works with both new and old Reddit layouts
 
 ## Installation
 
@@ -19,10 +21,21 @@ A browser extension that allows you to hide Reddit posts by clicking on them, wi
 
 ## Usage
 
-1. Navigate to any Reddit page
-2. Click on posts you want to hide - they will fade out and be hidden
-3. Use the extension popup to manage settings or view hidden posts
+### Hiding Individual Posts
+1. Navigate to any Reddit page (home, r/all, r/popular, or specific subreddits)
+2. Click on any post you want to hide - it will fade out and be hidden
+3. To unhide a post, hover over the hidden post and click the "UNHIDE POST" button that appears
 4. Hidden posts are automatically saved and will remain hidden on future visits
+
+### Blocking Subreddits
+1. Click the extension icon in your browser toolbar to open the popup
+2. Use the subreddit blocking feature to add subreddits you never want to see
+3. Posts from blocked subreddits are completely hidden from your feed
+4. Manage your blocked subreddits list through the extension popup
+
+### Keyboard Shortcuts
+- **Ctrl+H**: Hide or unhide the post you're currently hovering over
+- **Ctrl+Shift+H**: Show quick help message
 
 ## Files
 
