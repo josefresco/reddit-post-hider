@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "Reddit Post Hider",
+  "version": "2.0",
+  "description": "Hide Reddit posts by clicking, with persistent storage, keyboard shortcuts, and enhanced user experience",
+  "permissions": [
+    "storage",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "*://*.reddit.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["*://*.reddit.com/*"],
+      "js": ["content.js"],
+      "css": ["styles.css"],
+      "run_at": "document_end"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Reddit Post Hider"
+  }
+}

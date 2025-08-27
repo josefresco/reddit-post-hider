@@ -1,0 +1,106 @@
+/* Reddit Post Hider Styles - Enhanced Version */
+
+/* Smooth transitions for opacity changes */
+[data-rph-setup="true"] {
+  transition: opacity 0.2s ease-in-out, transform 0.2s ease-in-out !important;
+  cursor: pointer !important;
+  position: relative !important;
+}
+
+/* Focus indicator for accessibility */
+[data-rph-setup="true"]:focus-visible {
+  outline: 2px solid #ff4500 !important;
+  outline-offset: 2px !important;
+}
+
+/* Hidden post state */
+.rph-hidden {
+  opacity: 0.05 !important;
+  pointer-events: auto !important;
+}
+
+/* Hover state for non-hidden posts */
+.rph-hover {
+  opacity: 0.95 !important;
+  transform: scale(0.98) !important;
+  transition: all 0.2s ease-in-out !important;
+}
+
+/* Unhide button styling */
+.rph-unhide-btn {
+  position: absolute !important;
+  top: 50% !important;
+  left: 50% !important;
+  transform: translate(-50%, -50%) !important;
+  background: #ff4500 !important;
+  color: white !important;
+  padding: 12px 24px !important;
+  border-radius: 8px !important;
+  font-weight: bold !important;
+  font-size: 16px !important;
+  cursor: pointer !important;
+  z-index: 1000 !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
+  border: 2px solid #ff6635 !important;
+  transition: all 0.2s ease !important;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif !important;
+  text-align: center !important;
+  user-select: none !important;
+  text-transform: uppercase !important;
+  letter-spacing: 1px !important;
+}
+
+.rph-unhide-btn:hover {
+  background: #ff6635 !important;
+  transform: translate(-50%, -50%) scale(1.05) !important;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4) !important;
+}
+
+.rph-unhide-btn:active {
+  transform: translate(-50%, -50%) scale(0.98) !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;
+}
+
+/* Prevent text selection on posts while hovering */
+.rph-hover * {
+  user-select: none !important;
+}
+
+/* Ensure the unhide button is always visible */
+.rph-hidden .rph-unhide-btn {
+  opacity: 1 !important;
+}
+
+/* Override any Reddit styles that might interfere */
+.rph-hidden:hover {
+  opacity: 0.05 !important;
+}
+
+/* Make sure videos don't play in hidden posts */
+.rph-hidden video {
+  pointer-events: none !important;
+}
+
+/* Disable interactions with images in all posts when extension is active */
+[data-rph-setup="true"] img,
+[data-rph-setup="true"] picture {
+  pointer-events: auto !important;
+}
+
+/* Special handling for old Reddit */
+.thing.link.rph-hidden {
+  opacity: 0.05 !important;
+}
+
+.thing.link.rph-hover {
+  opacity: 0.95 !important;
+}
+
+/* Special handling for new Reddit cards */
+[data-testid="post-container"].rph-hidden {
+  opacity: 0.05 !important;
+}
+
+[data-testid="post-container"].rph-hover {
+  opacity: 0.95 !important;
+}
