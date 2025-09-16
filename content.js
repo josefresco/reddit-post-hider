@@ -255,12 +255,18 @@ class RedditPostHider {
     if (!this.isOverviewPage) return [];
 
     try {
-      // Use reliable, specific selectors first
+      // Comprehensive selectors for all post types
       const selectors = [
         '[data-testid="post-container"]',
         'shreddit-post',
         '.thing[data-fullname^="t3_"]',
-        'article[id^="t3_"]'
+        'article[id^="t3_"]',
+        // Additional selectors for video/link posts
+        '[data-post-click-location]',
+        '[data-adclicklocation]',
+        'div[id^="t3_"]',
+        // Posts with media content
+        '[data-testid*="post"]'
       ];
 
       const posts = [];
@@ -287,10 +293,24 @@ class RedditPostHider {
     // Basic size check
     if (element.offsetHeight < 30 || element.offsetWidth < 100) return false;
 
-    // Must have post indicators
-    return element.querySelector('a[href*="/comments/"]') ||
-           element.querySelector('[data-testid*="vote"]') ||
-           element.getAttribute('data-fullname')?.startsWith('t3_');
+    // Must have post indicators - expanded for video/link posts
+    const hasCommentLink = element.querySelector('a[href*="/comments/"]');
+    const hasVoteElements = element.querySelector('[data-testid*="vote"], [aria-label*="vote"], [aria-label*="upvote"], [aria-label*="downvote"]');
+    const hasPostId = element.getAttribute('data-fullname')?.startsWith('t3_') || element.id?.startsWith('t3_');
+    const hasPostTitle = element.querySelector('h1, h2, h3, [data-adclicklocation="title"], [role="heading"]');
+    const hasMediaContent = element.querySelector('video, iframe, img, [data-testid*="media"]');
+    const hasPostMetadata = element.querySelector('[data-testid="post_author_link"], [href*="/user/"], [href*="/u/"]');
+
+    // Check for post-specific data attributes
+    const hasPostAttributes = element.getAttribute('data-post-click-location') ||
+                              element.getAttribute('data-adclicklocation') ||
+                              element.hasAttribute('slot') && element.getAttribute('slot').includes('post');
+
+    // Must have at least 2 indicators to be considered a valid post
+    const indicators = [hasCommentLink, hasVoteElements, hasPostId, hasPostTitle, hasMediaContent, hasPostMetadata, hasPostAttributes];
+    const validIndicators = indicators.filter(Boolean).length;
+
+    return validIndicators >= 2;
   }
 
   getPostId(post) {
@@ -309,9 +329,26 @@ class RedditPostHider {
       if (match) return 't3_' + match[1];
     }
 
-    // Fallback: create hash from title
-    const title = post.querySelector('h1, h2, h3, [data-adclicklocation="title"]')?.textContent?.trim();
-    if (title) return 'hash_' + this.simpleHash(title);
+    // Method 4: Look for data-post-id or similar attributes
+    const postDataAttrs = ['data-post-id', 'data-id', 'data-permalink'];
+    for (const attr of postDataAttrs) {
+      const value = post.getAttribute(attr);
+      if (value) {
+        if (value.startsWith('t3_')) return value;
+        if (/^[a-zA-Z0-9]{6,}$/.test(value)) return 't3_' + value;
+      }
+    }
+
+    // Method 5: Look in child elements for post IDs
+    const childWithId = post.querySelector('[id^="t3_"], [data-fullname^="t3_"]');
+    if (childWithId) {
+      return childWithId.id || childWithId.getAttribute('data-fullname');
+    }
+
+    // Fallback: create hash from title and author
+    const title = post.querySelector('h1, h2, h3, [data-adclicklocation="title"], [role="heading"]')?.textContent?.trim();
+    const author = post.querySelector('[data-testid="post_author_link"], [href*="/user/"], [href*="/u/"]')?.textContent?.trim();
+    if (title) return 'hash_' + this.simpleHash(title + (author || ''));
 
     return null;
   }
@@ -414,7 +451,13 @@ class RedditPostHider {
     if (e.target.tagName === 'A' ||
         e.target.tagName === 'BUTTON' ||
         e.target.tagName === 'INPUT' ||
-        e.target.closest('a, button, [data-testid="vote-arrows"]')) {
+        e.target.tagName === 'VIDEO' ||
+        e.target.closest('a, button, [data-testid="vote-arrows"], video, [data-testid*="media"], .video-container')) {
+      return;
+    }
+
+    // Allow clicks on video controls and media elements
+    if (e.target.closest('[controls], [data-testid*="video"], [data-testid*="play"]')) {
       return;
     }
 
