@@ -251,168 +251,68 @@ class RedditPostHider {
     });
   }
 
-  getMainPostSelectors() {
-    return [
-      // Most reliable selectors first
-      '[data-testid="post-container"]',
-      'shreddit-post',
-      '.thing[data-fullname^="t3_"]',
-      'div[id^="t3_"]',
-      'article[id^="t3_"]'
-    ];
-  }
-
   getAllPosts() {
     if (!this.isOverviewPage) return [];
-    
+
     try {
-      const posts = new Set();
-      
-      this.findPostsBySelectors(posts);
-      this.findPostsByVotingElements(posts);
-      this.findPostsByCommentLinks(posts);
-      
-      const validPosts = Array.from(posts).filter(post => this.isValidPostContainer(post));
-      this.log(`Found ${validPosts.length} valid posts out of ${posts.size} candidates`);
-      return validPosts;
+      // Use reliable, specific selectors first
+      const selectors = [
+        '[data-testid="post-container"]',
+        'shreddit-post',
+        '.thing[data-fullname^="t3_"]',
+        'article[id^="t3_"]'
+      ];
+
+      const posts = [];
+      selectors.forEach(selector => {
+        const elements = document.querySelectorAll(selector);
+        elements.forEach(element => {
+          if (!posts.includes(element) && this.isValidPost(element)) {
+            posts.push(element);
+          }
+        });
+      });
+
+      this.log(`Found ${posts.length} valid posts`);
+      return posts;
     } catch (error) {
       this.logError('Error in getAllPosts:', error);
       return [];
     }
   }
 
-  findPostsBySelectors(posts) {
-    const directPosts = document.querySelectorAll(this.getMainPostSelectors().join(', '));
-    this.log('Direct posts found:', directPosts.length);
-    directPosts.forEach(post => posts.add(post));
-  }
-
-  findPostsByVotingElements(posts) {
-    const votingElements = document.querySelectorAll('[data-testid="vote-arrows"], [aria-label*="upvote"], [aria-label*="downvote"]');
-    this.log('Voting elements found:', votingElements.length);
-    votingElements.forEach(voting => {
-      const postContainer = this.findPostContainer(voting);
-      if (postContainer) posts.add(postContainer);
-    });
-  }
-
-  findPostsByCommentLinks(posts) {
-    const commentLinks = document.querySelectorAll('a[href*="/comments/"]');
-    this.log('Comment links found:', commentLinks.length);
-    commentLinks.forEach(link => {
-      const postContainer = this.findPostContainer(link);
-      if (postContainer) posts.add(postContainer);
-    });
-  }
-
-  findPostContainer(element) {
-    let current = element;
-    let maxDepth = this.config.DOM.MAX_TRAVERSAL_DEPTH;
-    
-    while (current && current !== document.body && maxDepth > 0) {
-      if (this.matchesPostSelector(current)) {
-        return current;
-      }
-      
-      if (this.looksLikePostContainer(current)) {
-        return current;
-      }
-      
-      current = current.parentElement;
-      maxDepth--;
-    }
-    
-    return null;
-  }
-
-  matchesPostSelector(element) {
-    const selectors = this.getMainPostSelectors();
-    return selectors.some(selector => {
-      try {
-        return element.matches && element.matches(selector);
-      } catch (e) {
-        return false;
-      }
-    });
-  }
-
-  looksLikePostContainer(element) {
-    const hasVoting = element.querySelector('[data-testid="vote-arrows"], [aria-label*="upvote"], [aria-label*="downvote"]');
-    const hasComments = element.querySelector('a[href*="/comments/"], [data-testid="comments-page-link"]');
-    const hasTitle = element.querySelector('h1, h2, h3, [data-adclicklocation="title"]');
-    const hasAuthor = element.querySelector('[data-testid="post_author_link"], [href*="/user/"], [href*="/u/"]');
-    
-    const score = [hasVoting, hasComments, hasTitle, hasAuthor].filter(Boolean).length;
-    const isReasonableSize = element.offsetHeight > this.config.DOM.MIN_POST_HEIGHT && 
-                            element.offsetWidth > this.config.DOM.MIN_POST_WIDTH;
-    
-    return score >= 2 && isReasonableSize;
-  }
-
-  isValidPostContainer(element) {
+  isValidPost(element) {
     if (!element || element.dataset.rphSetup) return false;
-    
-    const isReasonableSize = element.offsetHeight > this.config.DOM.VALIDATION_MIN_HEIGHT && 
-                            element.offsetWidth > this.config.DOM.VALIDATION_MIN_WIDTH;
-    
-    const hasRedditContent = 
-      element.querySelector('a[href*="/comments/"]') ||
-      element.querySelector('[data-testid*="vote"]') ||
-      element.querySelector('[data-testid*="post"]') ||
-      element.querySelector('h1, h2, h3, h4, h5, h6') ||
-      element.textContent.includes('comment') ||
-      element.textContent.includes('vote') ||
-      element.getAttribute('data-fullname') ||
-      element.id?.startsWith('t3_');
-    
-    return isReasonableSize && hasRedditContent;
-  }
 
-  isPostElement(element) {
-    return this.matchesPostSelector(element) && this.isValidPostContainer(element);
+    // Basic size check
+    if (element.offsetHeight < 30 || element.offsetWidth < 100) return false;
+
+    // Must have post indicators
+    return element.querySelector('a[href*="/comments/"]') ||
+           element.querySelector('[data-testid*="vote"]') ||
+           element.getAttribute('data-fullname')?.startsWith('t3_');
   }
 
   getPostId(post) {
-    // Try multiple methods to get a unique post ID
-    let id = null;
-    
-    // Method 1: data-fullname attribute
-    id = post.getAttribute('data-fullname');
-    if (id) return id;
-    
+    // Method 1: data-fullname attribute (most reliable)
+    const fullname = post.getAttribute('data-fullname');
+    if (fullname && fullname.startsWith('t3_')) return fullname;
+
     // Method 2: element ID
-    if (post.id && post.id.startsWith('t3_')) {
-      return post.id;
-    }
-    
+    if (post.id && post.id.startsWith('t3_')) return post.id;
+
     // Method 3: extract from comment links
     const commentLink = post.querySelector('a[href*="/comments/"]');
     if (commentLink) {
       const href = commentLink.getAttribute('href');
       const match = href.match(/\/comments\/([a-zA-Z0-9]+)/);
-      if (match) {
-        return 't3_' + match[1];
-      }
+      if (match) return 't3_' + match[1];
     }
-    
-    // Method 4: Look in data attributes
-    const dataAttrs = ['data-post-id', 'data-id', 'data-permalink'];
-    for (const attr of dataAttrs) {
-      const value = post.getAttribute(attr);
-      if (value) {
-        if (value.startsWith('t3_')) return value;
-        if (/^[a-zA-Z0-9]{6,}$/.test(value)) return 't3_' + value;
-      }
-    }
-    
-    // Fallback: create hash from content
-    const title = post.querySelector('h1, h2, h3, [data-adclicklocation="title"], [role="heading"]')?.textContent?.trim() || '';
-    const author = post.querySelector('[data-testid="post_author_link"], [href*="/user/"], [href*="/u/"]')?.textContent?.trim() || '';
-    
-    if (title) {
-      return 'hash_' + this.simpleHash(title + author);
-    }
-    
+
+    // Fallback: create hash from title
+    const title = post.querySelector('h1, h2, h3, [data-adclicklocation="title"]')?.textContent?.trim();
+    if (title) return 'hash_' + this.simpleHash(title);
+
     return null;
   }
 
@@ -446,7 +346,6 @@ class RedditPostHider {
 
       this.attachPostEventHandlers(post, postId);
       this.stylePost(post);
-      this.addMediaOverlay(post);
       
       this.log('Post setup complete for:', postId);
     } catch (error) {
@@ -455,29 +354,21 @@ class RedditPostHider {
   }
 
   attachPostEventHandlers(post, postId) {
-    const mouseEnterHandler = (e) => {
-      e.stopPropagation();
-      this.handleMouseEnter(post, postId);
-    };
-    
-    const mouseLeaveHandler = (e) => {
-      e.stopPropagation();
-      this.handleMouseLeave(post, postId);
-    };
-    
     const clickHandler = (e) => {
-      this.handlePostClick(e, post, postId);
+      // Only handle direct clicks on the post, not bubbled events
+      if (e.target === post || post.contains(e.target)) {
+        this.handlePostClick(e, post, postId);
+      }
     };
+
+    const mouseEnterHandler = () => this.handleMouseEnter(post, postId);
+    const mouseLeaveHandler = () => this.handleMouseLeave(post, postId);
 
     post.addEventListener('mouseenter', mouseEnterHandler);
     post.addEventListener('mouseleave', mouseLeaveHandler);
-    post.addEventListener('click', clickHandler, true);
+    post.addEventListener('click', clickHandler);
 
-    post._rphHandlers = {
-      mouseEnterHandler,
-      mouseLeaveHandler,
-      clickHandler
-    };
+    post._rphHandlers = { mouseEnterHandler, mouseLeaveHandler, clickHandler };
   }
 
   stylePost(post) {
@@ -485,168 +376,16 @@ class RedditPostHider {
     post.style.transition = 'opacity 0.2s ease-in-out';
   }
 
-  addMediaOverlay(post) {
-    // Find media containers that might intercept clicks
-    const mediaSelectors = [
-      'iframe',
-      'shreddit-embed',
-      'shreddit-aspect-ratio',
-      '[slot="post-media-container"]',
-      '.embed-container',
-      'video',
-      '.video-container'
-    ];
-    
-    const mediaElements = post.querySelectorAll(mediaSelectors.join(', '));
-    
-    mediaElements.forEach(media => {
-      // Skip if already has overlay
-      if (media.querySelector('.rph-click-overlay')) return;
-      
-      // Create transparent overlay
-      const overlay = document.createElement('div');
-      overlay.className = 'rph-click-overlay';
-      overlay.style.cssText = `
-        position: absolute !important;
-        top: 0 !important;
-        left: 0 !important;
-        right: 0 !important;
-        bottom: 0 !important;
-        z-index: 10 !important;
-        background: transparent !important;
-        cursor: pointer !important;
-        pointer-events: auto !important;
-      `;
-      
-      // Ensure the media container has relative positioning
-      const computedStyle = window.getComputedStyle(media);
-      if (computedStyle.position === 'static') {
-        media.style.position = 'relative';
-      }
-      
-      // Add click handler to overlay
-      overlay.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        // Find the post container and trigger hide
-        const postContainer = this.findPostContainer(overlay);
-        if (postContainer && postContainer.dataset.rphSetup) {
-          const postId = this.getPostId(postContainer);
-          if (postId) {
-            if (this.hiddenPosts.has(postId)) {
-              this.unhidePost(postContainer, postId);
-            } else {
-              this.hidePost(postContainer, postId);
-            }
-          }
-        }
-      });
-      
-      media.appendChild(overlay);
-    });
-  }
 
   removePostHandlers(post) {
     if (post._rphHandlers) {
       post.removeEventListener('mouseenter', post._rphHandlers.mouseEnterHandler);
       post.removeEventListener('mouseleave', post._rphHandlers.mouseLeaveHandler);
-      post.removeEventListener('click', post._rphHandlers.clickHandler, true);
+      post.removeEventListener('click', post._rphHandlers.clickHandler);
       delete post._rphHandlers;
     }
-    
-    // Remove overlays
-    const overlays = post.querySelectorAll('.rph-click-overlay');
-    overlays.forEach(overlay => overlay.remove());
   }
 
-  isInteractiveElement(element) {
-    // Check if the clicked element should not trigger hide/unhide
-    let current = element;
-    let maxDepth = 5;
-    
-    while (current && maxDepth > 0) {
-      // Skip if it's our overlay (shouldn't happen, but just in case)
-      if (current.classList.contains('rph-click-overlay')) {
-        return false;
-      }
-      
-      // Skip if it's a button
-      if (current.tagName === 'BUTTON') return true;
-      
-      // Skip if it's an input element
-      if (current.tagName === 'INPUT') return true;
-      
-      // Skip voting elements
-      if (current.getAttribute('data-testid') === 'vote-arrows' ||
-          current.getAttribute('data-testid')?.includes('vote') ||
-          current.getAttribute('aria-label')?.includes('vote')) {
-        return true;
-      }
-      
-      // Skip elements with specific interactive classes
-      if (current.classList.contains('vote') || 
-          current.classList.contains('arrow') ||
-          current.classList.contains('score')) {
-        return true;
-      }
-      
-      // Skip specific Reddit interactive elements
-      if (current.tagName === 'SHREDDIT-JOIN-BUTTON' ||
-          current.tagName === 'SHREDDIT-POST-OVERFLOW-MENU' ||
-          current.getAttribute('data-testid') === 'credit-bar-join-button') {
-        return true;
-      }
-      
-      current = current.parentElement;
-      maxDepth--;
-    }
-    
-    return false;
-  }
-
-  isCommentsButton(element) {
-    // Check if the clicked element is a comments button
-    let current = element;
-    let maxDepth = 5;
-    
-    while (current && maxDepth > 0) {
-      // Check for comments button indicators
-      if (current.tagName === 'A') {
-        const href = current.getAttribute('href') || '';
-        
-        // Check if this is a comments link
-        if (href.includes('/comments/')) {
-          // Additional checks to ensure it's a comments button, not just any link to comments
-          const dataLocation = current.getAttribute('data-post-click-location');
-          const name = current.getAttribute('name');
-          const hasCommentIcon = current.querySelector('svg.icon-comment, [icon-name="comment-outline"]');
-          const hasCommentText = current.textContent?.toLowerCase().includes('comment') || 
-                                 current.querySelector('faceplate-screen-reader-content')?.textContent?.toLowerCase().includes('comment');
-          
-          // Must be specifically marked as a comments button or have comment-related attributes/content
-          if (dataLocation === 'comments-button' || 
-              name === 'comments-action-button' ||
-              hasCommentIcon ||
-              hasCommentText) {
-            console.log('Detected comments button:', current);
-            return true;
-          }
-        }
-      }
-      
-      // Check for old Reddit comments button classes
-      if (current.classList.contains('comments') || 
-          current.classList.contains('bylink') ||
-          (current.classList.contains('flat-list') && current.querySelector('a[href*="/comments/"]'))) {
-        return true;
-      }
-      
-      current = current.parentElement;
-      maxDepth--;
-    }
-    
-    return false;
-  }
 
   handleMouseEnter(post, postId) {
     this.log('Mouse enter for post:', postId);
@@ -671,85 +410,24 @@ class RedditPostHider {
   }
 
   handlePostClick(e, post, postId) {
-    if (this.isInteractiveElement(e.target)) {
-      this.log('Clicked on interactive element, ignoring:', e.target);
+    // Allow clicks on links, buttons, and interactive elements
+    if (e.target.tagName === 'A' ||
+        e.target.tagName === 'BUTTON' ||
+        e.target.tagName === 'INPUT' ||
+        e.target.closest('a, button, [data-testid="vote-arrows"]')) {
       return;
     }
 
-    if (this.isCommentsButton(e.target)) {
-      this.log('Clicked on comments button, allowing navigation:', e.target);
-      return;
-    }
-
-    if (this.shouldAllowNavigation(e, post)) {
-      this.log('Allowing navigation');
-      return;
-    }
-
-    this.log('Handling post click for:', postId);
     e.preventDefault();
     e.stopPropagation();
 
-    try {
-      if (this.hiddenPosts.has(postId)) {
-        this.unhidePost(post, postId);
-      } else {
-        this.hidePost(post, postId);
-      }
-    } catch (error) {
-      this.logError('Error handling post click:', error);
+    if (this.hiddenPosts.has(postId)) {
+      this.unhidePost(post, postId);
+    } else {
+      this.hidePost(post, postId);
     }
   }
 
-  shouldAllowNavigation(e, post) {
-    // Very restrictive navigation allowance - only for specific external/non-post navigation
-    let current = e.target;
-    let maxDepth = 3;
-    
-    while (current && current !== post && maxDepth > 0) {
-      // Skip our own overlay elements
-      if (current.classList.contains('rph-click-overlay')) {
-        return false;
-      }
-      
-      // 1. External links with target="_blank" or external URLs
-      if (current.tagName === 'A') {
-        const href = current.getAttribute('href') || '';
-        
-        // Allow external links
-        if (href.startsWith('http') && current.hasAttribute('target')) {
-          return true;
-        }
-        
-        // Allow subreddit navigation (but not post navigation)
-        if (href.match(/^\/r\/[^\/]+\/?$/) && !href.includes('/comments/')) {
-          return true;
-        }
-        
-        // Allow user profile links
-        if (href.includes('/user/') || href.includes('/u/')) {
-          return true;
-        }
-        
-        // Allow comments links if they are comments buttons (handled by isCommentsButton)
-        // This is redundant since we check isCommentsButton first, but keeping for clarity
-        if (href.includes('/comments/') && this.isCommentsButton(current)) {
-          return true;
-        }
-      }
-      
-      // 2. Interactive UI elements that should navigate
-      if (current.tagName === 'SHREDDIT-JOIN-BUTTON' || 
-          current.getAttribute('data-testid') === 'subreddit-name') {
-        return true;
-      }
-      
-      current = current.parentElement;
-      maxDepth--;
-    }
-    
-    return false;
-  }
 
   hidePost(post, postId) {
     try {
