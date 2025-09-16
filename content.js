@@ -251,87 +251,153 @@ class RedditPostHider {
     });
   }
 
+  getMainPostSelectors() {
+    return [
+      // Most reliable selectors first
+      '[data-testid="post-container"]',
+      'shreddit-post',
+      '.thing[data-fullname^="t3_"]',
+      'div[id^="t3_"]',
+      'article[id^="t3_"]'
+    ];
+  }
+
   getAllPosts() {
     if (!this.isOverviewPage) return [];
 
     try {
-      // Comprehensive selectors for all post types
-      const selectors = [
-        '[data-testid="post-container"]',
-        'shreddit-post',
-        '.thing[data-fullname^="t3_"]',
-        'article[id^="t3_"]',
-        // Additional selectors for video/link posts
-        '[data-post-click-location]',
-        '[data-adclicklocation]',
-        'div[id^="t3_"]',
-        // Posts with media content
-        '[data-testid*="post"]'
-      ];
+      const posts = new Set();
 
-      const posts = [];
-      selectors.forEach(selector => {
-        const elements = document.querySelectorAll(selector);
-        elements.forEach(element => {
-          if (!posts.includes(element) && this.isValidPost(element)) {
-            posts.push(element);
-          }
-        });
-      });
+      this.findPostsBySelectors(posts);
+      this.findPostsByVotingElements(posts);
+      this.findPostsByCommentLinks(posts);
 
-      this.log(`Found ${posts.length} valid posts`);
-      return posts;
+      const validPosts = Array.from(posts).filter(post => this.isValidPostContainer(post));
+      this.log(`Found ${validPosts.length} valid posts out of ${posts.size} candidates`);
+      return validPosts;
     } catch (error) {
       this.logError('Error in getAllPosts:', error);
       return [];
     }
   }
 
-  isValidPost(element) {
+  findPostsBySelectors(posts) {
+    const directPosts = document.querySelectorAll(this.getMainPostSelectors().join(', '));
+    this.log('Direct posts found:', directPosts.length);
+    directPosts.forEach(post => posts.add(post));
+  }
+
+  findPostsByVotingElements(posts) {
+    const votingElements = document.querySelectorAll('[data-testid="vote-arrows"], [aria-label*="upvote"], [aria-label*="downvote"]');
+    this.log('Voting elements found:', votingElements.length);
+    votingElements.forEach(voting => {
+      const postContainer = this.findPostContainer(voting);
+      if (postContainer) posts.add(postContainer);
+    });
+  }
+
+  findPostsByCommentLinks(posts) {
+    const commentLinks = document.querySelectorAll('a[href*="/comments/"]');
+    this.log('Comment links found:', commentLinks.length);
+    commentLinks.forEach(link => {
+      const postContainer = this.findPostContainer(link);
+      if (postContainer) posts.add(postContainer);
+    });
+  }
+
+  findPostContainer(element) {
+    let current = element;
+    let maxDepth = this.config.DOM.MAX_TRAVERSAL_DEPTH;
+
+    while (current && current !== document.body && maxDepth > 0) {
+      if (this.matchesPostSelector(current)) {
+        return current;
+      }
+
+      if (this.looksLikePostContainer(current)) {
+        return current;
+      }
+
+      current = current.parentElement;
+      maxDepth--;
+    }
+
+    return null;
+  }
+
+  matchesPostSelector(element) {
+    const selectors = this.getMainPostSelectors();
+    return selectors.some(selector => {
+      try {
+        return element.matches && element.matches(selector);
+      } catch (e) {
+        return false;
+      }
+    });
+  }
+
+  looksLikePostContainer(element) {
+    const hasVoting = element.querySelector('[data-testid="vote-arrows"], [aria-label*="upvote"], [aria-label*="downvote"]');
+    const hasComments = element.querySelector('a[href*="/comments/"], [data-testid="comments-page-link"]');
+    const hasTitle = element.querySelector('h1, h2, h3, [data-adclicklocation="title"]');
+    const hasAuthor = element.querySelector('[data-testid="post_author_link"], [href*="/user/"], [href*="/u/"]');
+
+    const score = [hasVoting, hasComments, hasTitle, hasAuthor].filter(Boolean).length;
+    const isReasonableSize = element.offsetHeight > this.config.DOM.MIN_POST_HEIGHT &&
+                            element.offsetWidth > this.config.DOM.MIN_POST_WIDTH;
+
+    return score >= 2 && isReasonableSize;
+  }
+
+  isValidPostContainer(element) {
     if (!element || element.dataset.rphSetup) return false;
 
-    // Basic size check
-    if (element.offsetHeight < 30 || element.offsetWidth < 100) return false;
+    const isReasonableSize = element.offsetHeight > this.config.DOM.VALIDATION_MIN_HEIGHT &&
+                            element.offsetWidth > this.config.DOM.VALIDATION_MIN_WIDTH;
 
-    // Must have post indicators - expanded for video/link posts
-    const hasCommentLink = element.querySelector('a[href*="/comments/"]');
-    const hasVoteElements = element.querySelector('[data-testid*="vote"], [aria-label*="vote"], [aria-label*="upvote"], [aria-label*="downvote"]');
-    const hasPostId = element.getAttribute('data-fullname')?.startsWith('t3_') || element.id?.startsWith('t3_');
-    const hasPostTitle = element.querySelector('h1, h2, h3, [data-adclicklocation="title"], [role="heading"]');
-    const hasMediaContent = element.querySelector('video, iframe, img, [data-testid*="media"]');
-    const hasPostMetadata = element.querySelector('[data-testid="post_author_link"], [href*="/user/"], [href*="/u/"]');
+    const hasRedditContent =
+      element.querySelector('a[href*="/comments/"]') ||
+      element.querySelector('[data-testid*="vote"]') ||
+      element.querySelector('[data-testid*="post"]') ||
+      element.querySelector('h1, h2, h3, h4, h5, h6') ||
+      element.textContent.includes('comment') ||
+      element.textContent.includes('vote') ||
+      element.getAttribute('data-fullname') ||
+      element.id?.startsWith('t3_');
 
-    // Check for post-specific data attributes
-    const hasPostAttributes = element.getAttribute('data-post-click-location') ||
-                              element.getAttribute('data-adclicklocation') ||
-                              element.hasAttribute('slot') && element.getAttribute('slot').includes('post');
+    return isReasonableSize && hasRedditContent;
+  }
 
-    // Must have at least 2 indicators to be considered a valid post
-    const indicators = [hasCommentLink, hasVoteElements, hasPostId, hasPostTitle, hasMediaContent, hasPostMetadata, hasPostAttributes];
-    const validIndicators = indicators.filter(Boolean).length;
-
-    return validIndicators >= 2;
+  isPostElement(element) {
+    return this.matchesPostSelector(element) && this.isValidPostContainer(element);
   }
 
   getPostId(post) {
-    // Method 1: data-fullname attribute (most reliable)
-    const fullname = post.getAttribute('data-fullname');
-    if (fullname && fullname.startsWith('t3_')) return fullname;
+    // Try multiple methods to get a unique post ID
+    let id = null;
+
+    // Method 1: data-fullname attribute
+    id = post.getAttribute('data-fullname');
+    if (id) return id;
 
     // Method 2: element ID
-    if (post.id && post.id.startsWith('t3_')) return post.id;
+    if (post.id && post.id.startsWith('t3_')) {
+      return post.id;
+    }
 
     // Method 3: extract from comment links
     const commentLink = post.querySelector('a[href*="/comments/"]');
     if (commentLink) {
       const href = commentLink.getAttribute('href');
       const match = href.match(/\/comments\/([a-zA-Z0-9]+)/);
-      if (match) return 't3_' + match[1];
+      if (match) {
+        return 't3_' + match[1];
+      }
     }
 
-    // Method 4: Look for data-post-id or similar attributes
-    const postDataAttrs = ['data-post-id', 'data-id', 'data-permalink'];
-    for (const attr of postDataAttrs) {
+    // Method 4: Look in data attributes
+    const dataAttrs = ['data-post-id', 'data-id', 'data-permalink'];
+    for (const attr of dataAttrs) {
       const value = post.getAttribute(attr);
       if (value) {
         if (value.startsWith('t3_')) return value;
@@ -339,16 +405,13 @@ class RedditPostHider {
       }
     }
 
-    // Method 5: Look in child elements for post IDs
-    const childWithId = post.querySelector('[id^="t3_"], [data-fullname^="t3_"]');
-    if (childWithId) {
-      return childWithId.id || childWithId.getAttribute('data-fullname');
-    }
+    // Fallback: create hash from content
+    const title = post.querySelector('h1, h2, h3, [data-adclicklocation="title"], [role="heading"]')?.textContent?.trim() || '';
+    const author = post.querySelector('[data-testid="post_author_link"], [href*="/user/"], [href*="/u/"]')?.textContent?.trim() || '';
 
-    // Fallback: create hash from title and author
-    const title = post.querySelector('h1, h2, h3, [data-adclicklocation="title"], [role="heading"]')?.textContent?.trim();
-    const author = post.querySelector('[data-testid="post_author_link"], [href*="/user/"], [href*="/u/"]')?.textContent?.trim();
-    if (title) return 'hash_' + this.simpleHash(title + (author || ''));
+    if (title) {
+      return 'hash_' + this.simpleHash(title + author);
+    }
 
     return null;
   }
@@ -451,13 +514,7 @@ class RedditPostHider {
     if (e.target.tagName === 'A' ||
         e.target.tagName === 'BUTTON' ||
         e.target.tagName === 'INPUT' ||
-        e.target.tagName === 'VIDEO' ||
-        e.target.closest('a, button, [data-testid="vote-arrows"], video, [data-testid*="media"], .video-container')) {
-      return;
-    }
-
-    // Allow clicks on video controls and media elements
-    if (e.target.closest('[controls], [data-testid*="video"], [data-testid*="play"]')) {
+        e.target.closest('a, button, [data-testid="vote-arrows"]')) {
       return;
     }
 
